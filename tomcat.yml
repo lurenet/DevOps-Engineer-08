@@ -1,0 +1,167 @@
+---
+- name: install docker apps
+  hosts: all
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: ensure docker packages is present
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      with_items:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+      tags:
+        - docker
+
+    - name: ensure dockers official GPG is present
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      tags:
+        - docker
+
+    - name: ensure we have correct fingerprint key
+      apt_key:
+        id: 0EBFCD88
+        state: present
+      tags:
+        - docker
+
+    - name: get release
+      command: lsb_release -sc
+      register: release
+
+    - name: ensure we have stable repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ release.stdout }} stable
+        state: present
+        update_cache: yes
+      tags:
+        - docker
+
+    - name: ensure apt packages is updated
+      apt:
+        update_cache: yes
+      tags:
+        - docker
+
+    - name: ensure docker is present
+      apt:
+        name: docker-ce
+        state: present
+        update_cache: yes
+      tags:
+        - docker
+
+    # - name: get uname -s
+    #   command: uname -s
+    #   register: unames
+
+    # - name: get uname -m
+    #   command: uname -m
+    #   register: unamem
+
+    # - name: ensure docker-compose is present
+    #   get_url:
+    #     url: https://github.com/docker/compose/releases/download/1.28.6/docker-compose-{{ unames.stdout }}-{{ unamem.stdout }}
+    #     dest: /usr/local/bin/docker-compose
+    #     mode: 'u+x,g+x'
+    #   tags:
+    #     - docker
+
+
+- name: create & push image
+  hosts: build
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - include_vars: config/dockerhub.yml
+
+    - name: ensure directory exist
+      file:
+        path: /tmp/ansible
+        state: directory
+
+    - name: ensure dokerfile is present
+      copy:
+        src: source/Dockerfile
+        dest: /tmp/ansible/Dockerfile
+        force: yes
+
+    - name: ensure pip is present
+      apt:
+        name: python-pip
+        state: present
+        update_cache: yes
+
+    - name: ensure docker-py is present
+      pip:
+        name: "{{ item.name }}"
+        version: "{{ item.version }}"
+        state: present
+      with_items:
+      - { name: docker, version: 2.0.0 }
+      - { name: docker-py, version: 1.10.6 }
+
+    - name: ensure access to docker hub is present
+      docker_login:
+        username: "{{ username }}"
+        password: "{{ password }}"
+        email: "{{ email }}"
+
+    - name: ensure image is building, tagging & pushing to docker hub
+      docker_image:
+        path: /tmp/ansible
+        name: nickmas/dve-08
+        push: yes
+
+    - name: ensure access to docker hub is absent
+      docker_login:
+        state: absent
+
+
+- name: pull image & run container
+  hosts: prod
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: ensure directory exist
+      file:
+        path: /tmp/ansible
+        state: directory
+
+    - name: ensure pip is present
+      apt:
+        name: python-pip
+        state: present
+        update_cache: yes
+
+    - name: ensure docker-py is present
+      pip:
+        name: "{{ item.name }}"
+        version: "{{ item.version }}"
+        state: present
+      with_items:
+      - { name: docker-py, version: 1.10.6 }
+
+    - name: Restart a container
+      docker_container:
+        name: tomcat
+        image: nickmas/dve-08
+        state: started
+        restart: yes
+        ports:
+          - "80:8080"
+
+
+
+
+
+
