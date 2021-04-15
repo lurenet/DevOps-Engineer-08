@@ -1,5 +1,5 @@
 ---
-username: yourlogin
-password: yourpassword
-email: youremail
+dhub_username: yourlogin
+dhub_password: yourpasswd
+dhub_email: yourmail
 
